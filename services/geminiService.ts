@@ -1,18 +1,35 @@
 
-import { GoogleGenAI, Type, Schema } from "@google/genai";
+import { GoogleGenAI, Type } from "@google/genai";
 import { dataService } from "./dataService";
 import { Transaction, TransactionType } from "../types";
 
+// --- CONFIGURATION ---
+// PASTE YOUR PERMANENT API KEY HERE to allow everyone to use the app's AI features.
+// WARNING: This key will be visible in the frontend source code.
+const FALLBACK_API_KEY = "YOUR_PERMANENT_API_KEY_HERE"; 
+
 const getAI = () => {
-  const apiKey = dataService.getApiKey();
-  if (!apiKey) throw new Error("API Key missing");
+  const userKey = dataService.getApiKey();
+  // Prioritize user key, fallback to shared key
+  const apiKey = userKey || FALLBACK_API_KEY;
+  
+  if (!apiKey || apiKey === "YOUR_PERMANENT_API_KEY_HERE") {
+      throw new Error("API Key missing");
+  }
   return new GoogleGenAI({ apiKey });
 };
 
 export const geminiService = {
+  // Check if we have a usable key (either user or fallback)
+  hasValidKey: () => {
+      const userKey = dataService.getApiKey();
+      return !!userKey || (!!FALLBACK_API_KEY && FALLBACK_API_KEY !== "YOUR_PERMANENT_API_KEY_HERE");
+  },
+
   checkKey: async () => {
       try {
           const ai = getAI();
+          // Minimal call to validate key
           await ai.models.generateContent({
               model: 'gemini-2.5-flash',
               contents: 'Ping',
@@ -35,14 +52,14 @@ export const geminiService = {
       return response.text || "No insights available.";
     } catch (error) {
       console.error("Gemini Error", error);
-      return "Unable to generate summary. Check API Key.";
+      return "Unable to generate summary. API Key may be invalid or quota exceeded.";
     }
   },
 
   smartSearch: async (query: string): Promise<{ filters: any }> => {
     try {
       const ai = getAI();
-      const schema: Schema = {
+      const schema = {
           type: Type.OBJECT,
           properties: {
               description_contains: { type: Type.STRING, nullable: true },
@@ -71,7 +88,7 @@ export const geminiService = {
   predictTransaction: async (description: string): Promise<{ category: string, type: string }> => {
     try {
       const ai = getAI();
-      const schema: Schema = {
+      const schema = {
           type: Type.OBJECT,
           properties: {
               category: { type: Type.STRING },
@@ -115,7 +132,7 @@ export const geminiService = {
         const ai = getAI();
         const dataStr = JSON.stringify(transactions.slice(0, 20));
         
-        const schema: Schema = {
+        const schema = {
             type: Type.ARRAY,
             items: {
                 type: Type.OBJECT,
@@ -148,7 +165,7 @@ export const geminiService = {
           // Group by category for simplicity before sending to AI (optimization)
           const dataStr = JSON.stringify(transactions.slice(0, 50));
 
-          const schema: Schema = {
+          const schema = {
             type: Type.ARRAY,
             items: {
                 type: Type.OBJECT,

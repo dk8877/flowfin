@@ -1,17 +1,19 @@
+
 import React, { useState, useEffect } from 'react';
 import { dataService } from '../services/dataService';
-import { Group, Person } from '../types';
-import { Users, Plus, DollarSign, Trash2, Pencil, Save, X } from 'lucide-react';
+import { Group, Person, GroupExpense } from '../types';
+import { Users, Plus, Trash2, Pencil, ArrowLeft, Receipt, ChevronRight, User } from 'lucide-react';
 
 export const Groups: React.FC = () => {
     const [groups, setGroups] = useState<Group[]>([]);
     const [people, setPeople] = useState<Person[]>([]);
-    const [view, setView] = useState<'list' | 'create' | 'edit' | 'expense'>('list');
+    const [view, setView] = useState<'list' | 'create' | 'edit' | 'details' | 'expense'>('list');
     
     // Create/Edit Group State
     const [activeGroupId, setActiveGroupId] = useState<string | null>(null);
     const [groupName, setGroupName] = useState('');
     const [selectedMembers, setSelectedMembers] = useState<string[]>([]);
+    const [groupExpenses, setGroupExpenses] = useState<GroupExpense[]>([]);
 
     // Add Expense State
     const [expDesc, setExpDesc] = useState('');
@@ -53,6 +55,9 @@ export const Groups: React.FC = () => {
         setGroupName('');
         setSelectedMembers([]);
         setActiveGroupId(null);
+        setExpDesc('');
+        setExpAmount('');
+        setPayer('user');
     };
 
     const handleDeleteGroup = (e: React.MouseEvent, id: string) => {
@@ -79,20 +84,43 @@ export const Groups: React.FC = () => {
         }
     };
 
-    const handleAddExpenseClick = (groupId: string) => {
-        setActiveGroupId(groupId);
+    const openGroupDetails = (group: Group) => {
+        setActiveGroupId(group.id);
+        setGroupExpenses(dataService.getGroupExpenses(group.id));
+        setView('details');
+    };
+
+    const handleAddExpenseClick = () => {
         setView('expense');
     };
 
     const submitExpense = () => {
         if(activeGroupId && expDesc && expAmount) {
             dataService.addGroupExpense(activeGroupId, expDesc, parseFloat(expAmount), payer);
-            setView('list');
+            // Refresh expenses for details view
+            setGroupExpenses(dataService.getGroupExpenses(activeGroupId));
+            setView('details');
             setExpDesc('');
             setExpAmount('');
-            alert('Expense split and recorded in transactions!');
         }
     };
+
+    const getSplitBreakdown = () => {
+        if (!activeGroupId || !expAmount) return null;
+        const group = groups.find(g => g.id === activeGroupId);
+        if (!group) return null;
+
+        const totalPeople = group.members.length + 1;
+        const amount = parseFloat(expAmount);
+        if (isNaN(amount) || amount <= 0) return null;
+        
+        const splitAmount = amount / totalPeople;
+        const payerName = payer === 'user' ? 'You' : people.find(p => p.id === payer)?.name || 'Someone';
+
+        return { splitAmount, payerName, members: group.members };
+    };
+
+    const splitInfo = getSplitBreakdown();
 
     return (
         <div className="p-6 pt-6 lg:pt-10 space-y-6">
@@ -109,7 +137,7 @@ export const Groups: React.FC = () => {
                             <span className="text-xs font-medium">New Group</span>
                         </button>
                         {groups.map(g => (
-                            <div key={g.id} className="group relative flex-shrink-0 w-40 h-32 bg-neutral-900 rounded-2xl border border-neutral-800 p-4 flex flex-col justify-between hover:bg-neutral-800/50 transition cursor-pointer" onClick={() => handleAddExpenseClick(g.id)}>
+                            <div key={g.id} className="group relative flex-shrink-0 w-40 h-32 bg-neutral-900 rounded-2xl border border-neutral-800 p-4 flex flex-col justify-between hover:bg-neutral-800/50 transition cursor-pointer" onClick={() => openGroupDetails(g)}>
                                 {/* Edit Actions - Always Visible */}
                                 <div className="absolute top-2 right-2 flex gap-1 z-10">
                                     <button onClick={(e) => startEditGroup(e, g)} className="p-1.5 bg-neutral-950 rounded-md text-neutral-400 hover:text-white border border-neutral-800"><Pencil size={12} /></button>
@@ -124,14 +152,60 @@ export const Groups: React.FC = () => {
                                 </div>
                                 <div>
                                     <h3 className="font-bold text-slate-200 truncate">{g.name}</h3>
-                                    <p className="text-[10px] text-emerald-500 mt-1 flex items-center gap-1">
-                                        <Plus size={10} /> Add Expense
+                                    <p className="text-[10px] text-emerald-500 mt-1 flex items-center gap-1 group-hover:underline">
+                                        Details <ChevronRight size={10} />
                                     </p>
                                 </div>
                             </div>
                         ))}
                     </div>
                 </>
+            )}
+
+            {view === 'details' && activeGroupId && (
+                 <div className="animate-in fade-in slide-in-from-right-4">
+                     <div className="flex items-center gap-4 mb-6">
+                        <button onClick={() => setView('list')} className="p-2 bg-neutral-800 rounded-full hover:bg-neutral-700 text-neutral-400">
+                            <ArrowLeft size={20} />
+                        </button>
+                        <div>
+                             <h2 className="text-2xl font-bold text-slate-100">{groups.find(g => g.id === activeGroupId)?.name}</h2>
+                             <p className="text-xs text-neutral-500">{groups.find(g => g.id === activeGroupId)?.members.length} friends + You</p>
+                        </div>
+                     </div>
+
+                     <button 
+                        onClick={handleAddExpenseClick}
+                        className="w-full py-3 mb-6 bg-emerald-500/10 border border-emerald-500/50 text-emerald-400 rounded-xl font-bold flex items-center justify-center gap-2 hover:bg-emerald-500/20 transition"
+                     >
+                        <Plus size={18} /> Add Group Expense
+                     </button>
+
+                     <h3 className="text-sm font-semibold text-neutral-400 mb-3 uppercase tracking-wider">Expense History</h3>
+                     <div className="space-y-3">
+                        {groupExpenses.length === 0 ? (
+                            <p className="text-center text-neutral-600 py-8 italic">No expenses added to this group yet.</p>
+                        ) : (
+                            groupExpenses.map(e => {
+                                const payerName = e.paidBy === 'user' ? 'You' : people.find(p => p.id === e.paidBy)?.name || 'Unknown';
+                                return (
+                                    <div key={e.id} className="bg-neutral-900/50 p-4 rounded-xl border border-neutral-800 flex justify-between items-center">
+                                        <div className="flex items-center gap-3">
+                                            <div className="p-2 bg-neutral-800 rounded-full text-neutral-400">
+                                                <Receipt size={16} />
+                                            </div>
+                                            <div>
+                                                <p className="text-sm font-medium text-slate-200">{e.description}</p>
+                                                <p className="text-xs text-neutral-500">{payerName} paid ₹{e.amount}</p>
+                                            </div>
+                                        </div>
+                                        <span className="text-sm font-bold text-neutral-300">₹{e.amount}</span>
+                                    </div>
+                                );
+                            })
+                        )}
+                     </div>
+                 </div>
             )}
 
             {(view === 'create' || view === 'edit') && (
@@ -144,7 +218,7 @@ export const Groups: React.FC = () => {
                         onChange={e => setGroupName(e.target.value)}
                     />
                     <p className="text-xs text-neutral-500 mb-2 uppercase">Members</p>
-                    <div className="space-y-2 mb-6">
+                    <div className="space-y-2 mb-6 max-h-60 overflow-y-auto">
                         {people.length === 0 ? (
                             <p className="text-sm text-neutral-500 italic">No people found. Add friends in the People tab first.</p>
                         ) : (
@@ -157,7 +231,7 @@ export const Groups: React.FC = () => {
                         )}
                     </div>
                     <div className="flex gap-3">
-                        <button onClick={() => setView('list')} className="flex-1 py-3 rounded-xl bg-neutral-800 text-neutral-400 text-sm font-semibold">Cancel</button>
+                        <button onClick={() => { setView('list'); resetForm(); }} className="flex-1 py-3 rounded-xl bg-neutral-800 text-neutral-400 text-sm font-semibold">Cancel</button>
                         <button onClick={view === 'create' ? handleCreateGroup : handleUpdateGroup} className="flex-1 py-3 rounded-xl bg-emerald-500 text-black text-sm font-semibold">
                             {view === 'create' ? 'Create' : 'Save Changes'}
                         </button>
@@ -192,9 +266,54 @@ export const Groups: React.FC = () => {
                         ))}
                     </select>
 
+                    {/* Split Breakdown Visualization */}
+                    {splitInfo && (
+                        <div className="mb-6 bg-neutral-950 p-4 rounded-xl border border-neutral-800">
+                             <h4 className="text-xs font-bold text-neutral-400 uppercase mb-3 flex items-center gap-2">
+                                <Receipt size={12} /> Split Bill Breakdown
+                             </h4>
+                             <div className="space-y-2 text-sm">
+                                 <div className="flex justify-between items-center text-slate-300 font-medium pb-2 border-b border-neutral-800">
+                                     <span>Per person share</span>
+                                     <span>₹{splitInfo.splitAmount.toFixed(2)}</span>
+                                 </div>
+                                 <div className="pt-2 space-y-2">
+                                     {payer === 'user' ? (
+                                         splitInfo.members.map(mid => {
+                                             const mName = people.find(p => p.id === mid)?.name;
+                                             return (
+                                                 <div key={mid} className="flex justify-between text-xs text-neutral-500">
+                                                     <span>You lent to {mName}</span>
+                                                     <span className="text-emerald-500">+ ₹{splitInfo.splitAmount.toFixed(2)}</span>
+                                                 </div>
+                                             );
+                                         })
+                                     ) : (
+                                         <>
+                                            <div className="flex justify-between text-xs text-neutral-500">
+                                                <span>You owe {splitInfo.payerName}</span>
+                                                <span className="text-red-400">- ₹{splitInfo.splitAmount.toFixed(2)}</span>
+                                            </div>
+                                            {/* Show debts between other members */}
+                                            {splitInfo.members.filter(mId => mId !== payer).map(mid => {
+                                                 const mName = people.find(p => p.id === mid)?.name || 'Unknown';
+                                                 return (
+                                                     <div key={mid} className="flex justify-between text-xs text-neutral-500">
+                                                         <span>{mName} owes {splitInfo.payerName}</span>
+                                                         <span className="text-neutral-400">₹{splitInfo.splitAmount.toFixed(2)}</span>
+                                                     </div>
+                                                 );
+                                            })}
+                                         </>
+                                     )}
+                                 </div>
+                             </div>
+                        </div>
+                    )}
+
                     <div className="flex gap-3">
-                        <button onClick={() => setView('list')} className="flex-1 py-3 rounded-xl bg-neutral-800 text-neutral-400 text-sm font-semibold">Cancel</button>
-                        <button onClick={submitExpense} className="flex-1 py-3 rounded-xl bg-emerald-500 text-black text-sm font-semibold">Split & Save</button>
+                        <button onClick={() => setView('details')} className="flex-1 py-3 rounded-xl bg-neutral-800 text-neutral-400 text-sm font-semibold">Cancel</button>
+                        <button onClick={submitExpense} className="flex-1 py-3 rounded-xl bg-emerald-500 text-black text-sm font-semibold">Confirm Split</button>
                     </div>
                  </div>
             )}

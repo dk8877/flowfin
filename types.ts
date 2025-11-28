@@ -55,3 +55,10 @@ export interface SearchFilters {
   date_range_start?: string;
   category_is?: string;
 }
+
+export interface UserProfile {
+  id: string;
+  email: string;
+  passwordHash: string; // Storing plain text for demo, hash in real app
+  name: string;
+}

@@ -1,5 +1,5 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Layout } from './components/Layout';
 import { Dashboard } from './components/Dashboard';
 import { TransactionManager } from './components/TransactionManager';
@@ -10,11 +10,28 @@ import { Timeline } from './components/Timeline';
 import { Budgets } from './components/Budgets';
 import { Groups } from './components/Groups';
 import { AIOptimizer } from './components/AIOptimizer';
-import { Transaction } from './types';
+import { Auth } from './components/Auth';
+import { dataService } from './services/dataService';
 
 function App() {
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [activeTab, setActiveTab] = useState('dashboard');
   const [editingTransactionId, setEditingTransactionId] = useState<string | null>(null);
+
+  useEffect(() => {
+      setIsAuthenticated(dataService.isAuthenticated());
+  }, []);
+
+  const handleLogin = () => {
+      setIsAuthenticated(true);
+      setActiveTab('dashboard');
+  };
+
+  const handleLogout = () => {
+      dataService.logout();
+      setIsAuthenticated(false);
+      setActiveTab('dashboard'); // Reset tab state
+  };
 
   const handleEditTransaction = (id: string) => {
     setEditingTransactionId(id);
@@ -40,7 +57,7 @@ function App() {
       case 'analytics':
         return <Analytics />;
       case 'settings':
-        return <Settings />;
+        return <Settings onLogout={handleLogout} />;
       case 'timeline':
         return <Timeline onEditTransaction={handleEditTransaction} />;
       case 'budgets':
@@ -53,6 +70,10 @@ function App() {
         return <Dashboard onEditTransaction={handleEditTransaction} />;
     }
   };
+
+  if (!isAuthenticated) {
+      return <Auth onLogin={handleLogin} />;
+  }
 
   return (
     <Layout activeTab={activeTab === 'add' && editingTransactionId ? 'dashboard' : activeTab} onTabChange={(tab) => {

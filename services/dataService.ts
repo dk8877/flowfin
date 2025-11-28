@@ -1,69 +1,138 @@
 
-import { Transaction, Person, TransactionType, Group, GroupExpense, Budget } from '../types';
+import { Transaction, Person, TransactionType, Group, GroupExpense, Budget, UserProfile } from '../types';
 
-const STORAGE_KEYS = {
-  TRANSACTIONS: 'flowfin_transactions',
-  PEOPLE: 'flowfin_people',
-  GROUPS: 'flowfin_groups',
-  GROUP_EXPENSES: 'flowfin_group_expenses',
-  BUDGETS: 'flowfin_budgets',
-  API_KEY: 'flowfin_gemini_key'
+const BASE_KEYS = {
+  USERS: 'flowfin_users',
+  SESSION: 'flowfin_current_user_id',
+  // Specific data keys will be generated dynamically: `flowfin_${userId}_transactions`
 };
 
-// Seed data helper
-const seedData = () => {
-  if (!localStorage.getItem(STORAGE_KEYS.TRANSACTIONS)) {
-    const initialTransactions: Transaction[] = [
-      { id: '1', amount: 120, category: 'Food', description: 'Dinner at Mario\'s', date: new Date(Date.now() - 86400000).toISOString(), type: TransactionType.SPENT, tags: ['dining'] },
-      { id: '2', amount: 4500, category: 'Salary', description: 'Freelance Project', date: new Date(Date.now() - 172800000).toISOString(), type: TransactionType.RECEIVED, tags: ['income'] },
-      { id: '3', amount: 50, category: 'Transport', description: 'Uber to Airport', date: new Date().toISOString(), type: TransactionType.SPENT, tags: ['travel'] },
-    ];
-    localStorage.setItem(STORAGE_KEYS.TRANSACTIONS, JSON.stringify(initialTransactions));
-  }
-  if (!localStorage.getItem(STORAGE_KEYS.PEOPLE)) {
-    const initialPeople: Person[] = [
-      { id: 'p1', name: 'Alice', netBalance: 150, lastInteraction: new Date().toISOString() }, // She owes you
-      { id: 'p2', name: 'Bob', netBalance: -50, lastInteraction: new Date().toISOString() }   // You owe him
-    ];
-    localStorage.setItem(STORAGE_KEYS.PEOPLE, JSON.stringify(initialPeople));
-  }
-  if (!localStorage.getItem(STORAGE_KEYS.BUDGETS)) {
-      const initialBudgets: Budget[] = [
-          { category: 'Food', limit: 5000 },
-          { category: 'Transport', limit: 2000 }
-      ];
-      localStorage.setItem(STORAGE_KEYS.BUDGETS, JSON.stringify(initialBudgets));
-  }
+// Safe UUID generator
+const generateId = () => {
+    if (typeof crypto !== 'undefined' && crypto.randomUUID) {
+        return crypto.randomUUID();
+    }
+    return Date.now().toString(36) + Math.random().toString(36).substring(2);
 };
 
-seedData();
+// Helper to get current user ID
+const getCurrentUserId = (): string | null => {
+    return localStorage.getItem(BASE_KEYS.SESSION);
+};
+
+// Helper to get key for current user
+const getUserKey = (keySuffix: string): string => {
+    const uid = getCurrentUserId();
+    if (!uid) return `flowfin_anon_${keySuffix}`; // Fallback, though app should block this
+    return `flowfin_${uid}_${keySuffix}`;
+};
+
+// --- PRIVATE HELPERS ---
 
 const updatePersonBalance = (personId: string, amount: number, type: TransactionType, isReversal: boolean = false) => {
-    const people = JSON.parse(localStorage.getItem(STORAGE_KEYS.PEOPLE) || '[]');
+    const key = getUserKey('people');
+    const people = JSON.parse(localStorage.getItem(key) || '[]');
     const idx = people.findIndex((p: Person) => p.id === personId);
     if (idx >= 0) {
-        // If LENT, balance increases (positive). If BORROWED, balance decreases (negative).
-        // If reversal (deleting/editing), invert the sign.
         let change = type === TransactionType.LENT ? amount : -amount;
         if (isReversal) change = -change;
         
         people[idx].netBalance += change;
         people[idx].lastInteraction = new Date().toISOString();
-        localStorage.setItem(STORAGE_KEYS.PEOPLE, JSON.stringify(people));
+        localStorage.setItem(key, JSON.stringify(people));
     }
 };
 
 export const dataService = {
+  // --- AUTHENTICATION ---
+  
+  register: (email: string, password: string, name: string): boolean => {
+      const usersStr = localStorage.getItem(BASE_KEYS.USERS) || '[]';
+      const users: UserProfile[] = JSON.parse(usersStr);
+
+      if (users.find(u => u.email === email)) {
+          return false; // User exists
+      }
+
+      const newUser: UserProfile = {
+          id: generateId(),
+          email,
+          passwordHash: password, // In production, never store plain text
+          name
+      };
+
+      users.push(newUser);
+      localStorage.setItem(BASE_KEYS.USERS, JSON.stringify(users));
+      
+      // Auto login
+      localStorage.setItem(BASE_KEYS.SESSION, newUser.id);
+      return true;
+  },
+
+  login: (email: string, password: string): boolean => {
+      const usersStr = localStorage.getItem(BASE_KEYS.USERS) || '[]';
+      const users: UserProfile[] = JSON.parse(usersStr);
+      
+      const user = users.find(u => u.email === email && u.passwordHash === password);
+      if (user) {
+          localStorage.setItem(BASE_KEYS.SESSION, user.id);
+          return true;
+      }
+      return false;
+  },
+
+  logout: () => {
+      localStorage.removeItem(BASE_KEYS.SESSION);
+  },
+
+  isAuthenticated: (): boolean => {
+      return !!localStorage.getItem(BASE_KEYS.SESSION);
+  },
+
+  getCurrentUser: (): UserProfile | undefined => {
+      const uid = getCurrentUserId();
+      if (!uid) return undefined;
+      const users: UserProfile[] = JSON.parse(localStorage.getItem(BASE_KEYS.USERS) || '[]');
+      return users.find(u => u.id === uid);
+  },
+
+  forgotPassword: (email: string): string => {
+      // Mock functionality
+      const users: UserProfile[] = JSON.parse(localStorage.getItem(BASE_KEYS.USERS) || '[]');
+      const user = users.find(u => u.email === email);
+      if (user) {
+          return `Recovery email sent to ${email} (Mock: Your password is "${user.passwordHash}")`;
+      }
+      return "Email not found.";
+  },
+
+  changePassword: (oldPwd: string, newPwd: string): boolean => {
+      const uid = getCurrentUserId();
+      if (!uid) return false;
+      
+      const users: UserProfile[] = JSON.parse(localStorage.getItem(BASE_KEYS.USERS) || '[]');
+      const userIdx = users.findIndex(u => u.id === uid);
+      
+      if (userIdx >= 0 && users[userIdx].passwordHash === oldPwd) {
+          users[userIdx].passwordHash = newPwd;
+          localStorage.setItem(BASE_KEYS.USERS, JSON.stringify(users));
+          return true;
+      }
+      return false;
+  },
+
+  // --- DATA METHODS (User Scoped) ---
+
   getApiKey: (): string | null => {
-    return localStorage.getItem(STORAGE_KEYS.API_KEY);
+    return localStorage.getItem(getUserKey('gemini_key'));
   },
 
   setApiKey: (key: string) => {
-    localStorage.setItem(STORAGE_KEYS.API_KEY, key);
+    localStorage.setItem(getUserKey('gemini_key'), key);
   },
 
   getTransactions: (): Transaction[] => {
-    const data = localStorage.getItem(STORAGE_KEYS.TRANSACTIONS);
+    const data = localStorage.getItem(getUserKey('transactions'));
     return data ? JSON.parse(data) : [];
   },
 
@@ -74,7 +143,7 @@ export const dataService = {
   addTransaction: (tx: Transaction) => {
     const current = dataService.getTransactions();
     const updated = [tx, ...current];
-    localStorage.setItem(STORAGE_KEYS.TRANSACTIONS, JSON.stringify(updated));
+    localStorage.setItem(getUserKey('transactions'), JSON.stringify(updated));
 
     if (tx.personId && (tx.type === TransactionType.LENT || tx.type === TransactionType.BORROWED)) {
         updatePersonBalance(tx.personId, tx.amount, tx.type);
@@ -99,7 +168,7 @@ export const dataService = {
       }
 
       current[idx] = updatedTx;
-      localStorage.setItem(STORAGE_KEYS.TRANSACTIONS, JSON.stringify(current));
+      localStorage.setItem(getUserKey('transactions'), JSON.stringify(current));
   },
 
   deleteTransaction: (id: string) => {
@@ -113,23 +182,23 @@ export const dataService = {
       }
 
       const updated = current.filter(t => t.id !== id);
-      localStorage.setItem(STORAGE_KEYS.TRANSACTIONS, JSON.stringify(updated));
+      localStorage.setItem(getUserKey('transactions'), JSON.stringify(updated));
   },
 
   getPeople: (): Person[] => {
-    const data = localStorage.getItem(STORAGE_KEYS.PEOPLE);
+    const data = localStorage.getItem(getUserKey('people'));
     return data ? JSON.parse(data) : [];
   },
 
   addPerson: (name: string) => {
     const people = dataService.getPeople();
     const newPerson: Person = {
-      id: crypto.randomUUID(),
+      id: generateId(),
       name,
       netBalance: 0,
       lastInteraction: new Date().toISOString()
     };
-    localStorage.setItem(STORAGE_KEYS.PEOPLE, JSON.stringify([...people, newPerson]));
+    localStorage.setItem(getUserKey('people'), JSON.stringify([...people, newPerson]));
   },
 
   updatePerson: (person: Person) => {
@@ -137,22 +206,21 @@ export const dataService = {
       const idx = people.findIndex(p => p.id === person.id);
       if (idx >= 0) {
           people[idx] = person;
-          localStorage.setItem(STORAGE_KEYS.PEOPLE, JSON.stringify(people));
+          localStorage.setItem(getUserKey('people'), JSON.stringify(people));
       }
   },
 
   deletePerson: (id: string) => {
       const people = dataService.getPeople();
       const updated = people.filter(p => p.id !== id);
-      localStorage.setItem(STORAGE_KEYS.PEOPLE, JSON.stringify(updated));
+      localStorage.setItem(getUserKey('people'), JSON.stringify(updated));
       
-      // Optionally: Update transactions to remove the personId reference
       const txs = dataService.getTransactions();
       const updatedTxs = txs.map(t => {
           if (t.personId === id) return { ...t, personId: undefined };
           return t;
       });
-      localStorage.setItem(STORAGE_KEYS.TRANSACTIONS, JSON.stringify(updatedTxs));
+      localStorage.setItem(getUserKey('transactions'), JSON.stringify(updatedTxs));
   },
 
   settleDebt: (personId: string) => {
@@ -160,20 +228,20 @@ export const dataService = {
     const idx = people.findIndex(p => p.id === personId);
     if (idx >= 0) {
       people[idx].netBalance = 0;
-      localStorage.setItem(STORAGE_KEYS.PEOPLE, JSON.stringify(people));
+      localStorage.setItem(getUserKey('people'), JSON.stringify(people));
     }
   },
 
-  // --- Groups & Splitwise Logic ---
+  // --- Groups ---
   getGroups: (): Group[] => {
-    const data = localStorage.getItem(STORAGE_KEYS.GROUPS);
+    const data = localStorage.getItem(getUserKey('groups'));
     return data ? JSON.parse(data) : [];
   },
 
   addGroup: (name: string, members: string[]) => {
       const groups = dataService.getGroups();
-      const newGroup: Group = { id: crypto.randomUUID(), name, members };
-      localStorage.setItem(STORAGE_KEYS.GROUPS, JSON.stringify([...groups, newGroup]));
+      const newGroup: Group = { id: generateId(), name, members };
+      localStorage.setItem(getUserKey('groups'), JSON.stringify([...groups, newGroup]));
   },
 
   updateGroup: (group: Group) => {
@@ -181,14 +249,19 @@ export const dataService = {
       const idx = groups.findIndex(g => g.id === group.id);
       if (idx >= 0) {
           groups[idx] = group;
-          localStorage.setItem(STORAGE_KEYS.GROUPS, JSON.stringify(groups));
+          localStorage.setItem(getUserKey('groups'), JSON.stringify(groups));
       }
   },
 
   deleteGroup: (id: string) => {
       const groups = dataService.getGroups();
       const updated = groups.filter(g => g.id !== id);
-      localStorage.setItem(STORAGE_KEYS.GROUPS, JSON.stringify(updated));
+      localStorage.setItem(getUserKey('groups'), JSON.stringify(updated));
+  },
+
+  getGroupExpenses: (groupId: string): GroupExpense[] => {
+      const allExpenses = JSON.parse(localStorage.getItem(getUserKey('group_expenses')) || '[]');
+      return allExpenses.filter((e: GroupExpense) => e.groupId === groupId).sort((a: any, b: any) => new Date(b.date).getTime() - new Date(a.date).getTime());
   },
 
   addGroupExpense: (groupId: string, description: string, amount: number, paidBy: 'user' | string) => {
@@ -196,28 +269,24 @@ export const dataService = {
     const group = groups.find(g => g.id === groupId);
     if (!group) return;
 
-    // Simple Split Logic: Equal split among all members + user
-    const totalPeople = group.members.length + 1; // +1 for User
+    const totalPeople = group.members.length + 1;
     const splitAmount = amount / totalPeople;
 
-    // Create Expense Record
-    const expenses = JSON.parse(localStorage.getItem(STORAGE_KEYS.GROUP_EXPENSES) || '[]');
+    const expenses = JSON.parse(localStorage.getItem(getUserKey('group_expenses')) || '[]');
     const newExpense: GroupExpense = {
-        id: crypto.randomUUID(),
+        id: generateId(),
         groupId,
         description,
         amount,
         paidBy,
         date: new Date().toISOString()
     };
-    localStorage.setItem(STORAGE_KEYS.GROUP_EXPENSES, JSON.stringify([...expenses, newExpense]));
+    localStorage.setItem(getUserKey('group_expenses'), JSON.stringify([...expenses, newExpense]));
 
-    // Generate Transactions
     if (paidBy === 'user') {
-        // You paid, everyone else owes you
         group.members.forEach(memberId => {
             dataService.addTransaction({
-                id: crypto.randomUUID(),
+                id: generateId(),
                 amount: splitAmount,
                 description: `Group: ${description}`,
                 category: 'Group',
@@ -227,9 +296,8 @@ export const dataService = {
                 tags: ['group', group.name]
             });
         });
-        // Record your share as expense
         dataService.addTransaction({
-            id: crypto.randomUUID(),
+            id: generateId(),
             amount: splitAmount,
             description: `Group Share: ${description}`,
             category: 'Group',
@@ -238,10 +306,8 @@ export const dataService = {
             tags: ['group', group.name]
         });
     } else {
-        // Someone else paid.
-        // You owe them your share.
         dataService.addTransaction({
-            id: crypto.randomUUID(),
+            id: generateId(),
             amount: splitAmount,
             description: `Group: ${description}`,
             category: 'Group',
@@ -255,7 +321,7 @@ export const dataService = {
 
   // --- Budgets ---
   getBudgets: (): Budget[] => {
-      const data = localStorage.getItem(STORAGE_KEYS.BUDGETS);
+      const data = localStorage.getItem(getUserKey('budgets'));
       return data ? JSON.parse(data) : [];
   },
 
@@ -267,12 +333,12 @@ export const dataService = {
       } else {
           budgets.push(budget);
       }
-      localStorage.setItem(STORAGE_KEYS.BUDGETS, JSON.stringify(budgets));
+      localStorage.setItem(getUserKey('budgets'), JSON.stringify(budgets));
   },
 
   deleteBudget: (category: string) => {
       let budgets = dataService.getBudgets();
       budgets = budgets.filter(b => b.category !== category);
-      localStorage.setItem(STORAGE_KEYS.BUDGETS, JSON.stringify(budgets));
+      localStorage.setItem(getUserKey('budgets'), JSON.stringify(budgets));
   }
 };

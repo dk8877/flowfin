@@ -1,3 +1,4 @@
+
 import React, { useEffect, useState } from 'react';
 import {
   Chart as ChartJS,
@@ -43,6 +44,30 @@ export const Analytics: React.FC = () => {
         setLoadingTips(false);
     };
 
+    // Helper to get last 7 days of spending data
+    const getLast7DaysData = () => {
+        const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+        const resultLabels = [];
+        const resultData = [];
+        
+        for (let i = 6; i >= 0; i--) {
+            const d = new Date();
+            d.setDate(d.getDate() - i);
+            const dateStr = d.toISOString().split('T')[0];
+            
+            resultLabels.push(days[d.getDay()]);
+            
+            const sum = transactions
+                .filter(t => t.type === TransactionType.SPENT && t.date.startsWith(dateStr))
+                .reduce((acc, t) => acc + t.amount, 0);
+            resultData.push(sum);
+        }
+
+        return { labels: resultLabels, data: resultData };
+    };
+
+    const trendData = getLast7DaysData();
+
     // Chart Config
     const chartOptions = {
         responsive: true,
@@ -62,11 +87,11 @@ export const Analytics: React.FC = () => {
     };
 
     const lineData = {
-        labels: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'],
+        labels: trendData.labels,
         datasets: [
             {
                 label: 'Spending',
-                data: [120, 190, 30, 50, 20, 300, 100], // Mock for demo visualization
+                data: trendData.data,
                 borderColor: '#10b981',
                 backgroundColor: 'rgba(16, 185, 129, 0.5)',
                 tension: 0.4,
