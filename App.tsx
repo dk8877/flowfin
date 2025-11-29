@@ -1,4 +1,4 @@
-
+import { Analytics } from "@vercel/analytics/react";
 import React, { useState, useEffect } from 'react';
 import { Layout } from './components/Layout';
 import { Dashboard } from './components/Dashboard';
@@ -81,6 +81,7 @@ function App() {
       setActiveTab(tab);
     }}>
       {renderContent()}
+       <Analytics />
     </Layout>
   );
 }
