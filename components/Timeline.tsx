@@ -43,21 +43,21 @@ export const Timeline: React.FC<Props> = ({ onEditTransaction }) => {
 
     return (
         <div className="p-6 pt-6 lg:pt-10 space-y-6">
-            <h2 className="text-2xl font-bold text-slate-100 mb-6 hidden lg:block">Timeline</h2>
+            <h2 className="text-2xl font-bold text-slate-900 dark:text-slate-100 mb-6 hidden lg:block">Timeline</h2>
             
             {/* Mock AI Timeline Insight */}
-            <div className="bg-gradient-to-r from-amber-900/20 to-neutral-900 border border-amber-500/20 p-4 rounded-xl flex items-start gap-3">
-                <Star className="text-amber-400 mt-1 shrink-0" size={18} />
+            <div className="bg-gradient-to-r from-amber-100 to-white dark:from-amber-900/20 dark:to-neutral-900 border border-amber-200 dark:border-amber-500/20 p-4 rounded-xl flex items-start gap-3">
+                <Star className="text-amber-500 dark:text-amber-400 mt-1 shrink-0" size={18} />
                 <div>
-                    <h3 className="text-sm font-semibold text-amber-200">Spending Spike Detected</h3>
-                    <p className="text-xs text-neutral-400 mt-1">You spent 40% more this weekend compared to last. Mostly on Dining.</p>
+                    <h3 className="text-sm font-semibold text-amber-700 dark:text-amber-200">Spending Spike Detected</h3>
+                    <p className="text-xs text-neutral-600 dark:text-neutral-400 mt-1">You spent 40% more this weekend compared to last. Mostly on Dining.</p>
                 </div>
             </div>
 
-            <div className="relative border-l border-neutral-800 ml-3 space-y-8">
+            <div className="relative border-l border-slate-200 dark:border-neutral-800 ml-3 space-y-8">
                 {Object.keys(grouped).map(date => (
                     <div key={date} className="relative pl-6">
-                        <div className="absolute -left-[5px] top-1 w-2.5 h-2.5 rounded-full bg-emerald-500 ring-4 ring-neutral-950" />
+                        <div className="absolute -left-[5px] top-1 w-2.5 h-2.5 rounded-full bg-emerald-500 ring-4 ring-slate-50 dark:ring-neutral-950" />
                         
                         <h3 className="text-xs font-bold text-neutral-500 uppercase mb-3 flex items-center gap-2">
                             <Calendar size={12} />
@@ -66,11 +66,11 @@ export const Timeline: React.FC<Props> = ({ onEditTransaction }) => {
 
                         <div className="space-y-3">
                             {grouped[date].map((t: Transaction) => (
-                                <div key={t.id} className="group bg-neutral-900/50 p-3 rounded-xl border border-neutral-800 flex justify-between items-center relative overflow-hidden">
+                                <div key={t.id} className="group bg-white dark:bg-neutral-900/50 p-3 rounded-xl border border-slate-200 dark:border-neutral-800 flex justify-between items-center relative overflow-hidden">
                                     <div>
-                                        <p className="text-sm font-medium text-slate-200">{t.description}</p>
+                                        <p className="text-sm font-medium text-slate-900 dark:text-slate-200">{t.description}</p>
                                         <div className="flex items-center gap-2 mt-1">
-                                            <span className="text-[10px] px-1.5 py-0.5 rounded bg-neutral-800 text-neutral-400">{t.category}</span>
+                                            <span className="text-[10px] px-1.5 py-0.5 rounded bg-slate-100 dark:bg-neutral-800 text-neutral-500 dark:text-neutral-400">{t.category}</span>
                                             {t.amount > 1000 && t.type === TransactionType.SPENT && (
                                                 <span className="flex items-center gap-1 text-[10px] text-amber-500">
                                                     <AlertTriangle size={10} /> High Value
@@ -80,20 +80,20 @@ export const Timeline: React.FC<Props> = ({ onEditTransaction }) => {
                                     </div>
                                     <div className="flex items-center gap-3">
                                         <span className={`font-semibold text-sm ${
-                                            t.type === TransactionType.SPENT ? 'text-neutral-300' : 
-                                            t.type === TransactionType.RECEIVED ? 'text-emerald-400' : 'text-amber-400'
+                                            t.type === TransactionType.SPENT ? 'text-slate-700 dark:text-neutral-300' : 
+                                            t.type === TransactionType.RECEIVED ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-600 dark:text-amber-400'
                                         }`}>
                                             {t.type === TransactionType.SPENT ? '-' : '+'}₹{t.amount}
                                         </span>
                                         
                                         {/* Actions */}
-                                        <div className="flex items-center gap-1 bg-neutral-900 rounded-lg p-1 border border-neutral-700">
+                                        <div className="flex items-center gap-1 bg-slate-50 dark:bg-neutral-900 rounded-lg p-1 border border-slate-200 dark:border-neutral-700">
                                             {onEditTransaction && (
-                                                <button onClick={(e) => handleEdit(e, t.id)} className="p-1.5 hover:bg-neutral-800 rounded-md text-neutral-500 hover:text-white transition-colors">
+                                                <button onClick={(e) => handleEdit(e, t.id)} className="p-1.5 hover:bg-slate-200 dark:hover:bg-neutral-800 rounded-md text-neutral-500 dark:hover:text-white transition-colors">
                                                     <Pencil size={14} />
                                                 </button>
                                             )}
-                                            <button onClick={(e) => handleDelete(e, t.id)} className="p-1.5 hover:bg-red-900/30 rounded-md text-neutral-500 hover:text-red-400 transition-colors">
+                                            <button onClick={(e) => handleDelete(e, t.id)} className="p-1.5 hover:bg-red-100 dark:hover:bg-red-900/30 rounded-md text-neutral-500 hover:text-red-500 dark:hover:text-red-400 transition-colors">
                                                 <Trash2 size={14} />
                                             </button>
                                         </div>

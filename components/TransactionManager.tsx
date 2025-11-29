@@ -3,7 +3,7 @@ import React, { useState, useEffect } from 'react';
 import { TransactionType, Person } from '../types';
 import { dataService } from '../services/dataService';
 import { geminiService } from '../services/geminiService';
-import { Loader2, Wand2, Trash2 } from 'lucide-react';
+import { Loader2, Wand2, Trash2, Tag as TagIcon, Plus, X } from 'lucide-react';
 
 interface Props {
     editingId?: string | null;
@@ -17,9 +17,13 @@ export const TransactionManager: React.FC<Props> = ({ editingId, onComplete }) =
     const [type, setType] = useState<TransactionType>(TransactionType.SPENT);
     const [personId, setPersonId] = useState('');
     const [people, setPeople] = useState<Person[]>([]);
+    const [tags, setTags] = useState<string[]>([]);
+    const [tagInput, setTagInput] = useState('');
+    const [suggestedTags, setSuggestedTags] = useState<string[]>([]);
     
     // AI States
     const [isPredicting, setIsPredicting] = useState(false);
+    const [isSuggestingTags, setIsSuggestingTags] = useState(false);
 
     useEffect(() => {
         setPeople(dataService.getPeople());
@@ -32,6 +36,7 @@ export const TransactionManager: React.FC<Props> = ({ editingId, onComplete }) =
                 setCategory(tx.category);
                 setType(tx.type);
                 setPersonId(tx.personId || '');
+                setTags(tx.tags || []);
             }
         }
     }, [editingId]);
@@ -55,6 +60,36 @@ export const TransactionManager: React.FC<Props> = ({ editingId, onComplete }) =
         return () => clearTimeout(timeoutId);
     }, [description, editingId]);
 
+    const handleSuggestTags = async (e: React.MouseEvent) => {
+        e.preventDefault();
+        if (!description) return;
+        setIsSuggestingTags(true);
+        const suggestions = await geminiService.suggestTags(description);
+        // Filter out tags already added
+        const newSuggestions = suggestions.filter(s => !tags.includes(s));
+        setSuggestedTags(newSuggestions);
+        setIsSuggestingTags(false);
+    };
+
+    const addTag = (tag: string) => {
+        if (tag && !tags.includes(tag)) {
+            setTags([...tags, tag]);
+        }
+        setTagInput('');
+        setSuggestedTags(suggestedTags.filter(t => t !== tag));
+    };
+
+    const removeTag = (tag: string) => {
+        setTags(tags.filter(t => t !== tag));
+    };
+
+    const handleTagKeyDown = (e: React.KeyboardEvent) => {
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            addTag(tagInput.trim());
+        }
+    };
+
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
         if (!amount || !description) return;
@@ -66,7 +101,7 @@ export const TransactionManager: React.FC<Props> = ({ editingId, onComplete }) =
             category: category || 'General',
             date: editingId ? (dataService.getTransaction(editingId)?.date || new Date().toISOString()) : new Date().toISOString(),
             type,
-            tags: [],
+            tags: tags,
             personId: (type === TransactionType.LENT || type === TransactionType.BORROWED) ? personId : undefined
         };
 
@@ -89,7 +124,7 @@ export const TransactionManager: React.FC<Props> = ({ editingId, onComplete }) =
     return (
         <div className="p-6 pt-10 min-h-screen">
             <div className="flex justify-between items-center mb-6">
-                <h2 className="text-2xl font-bold text-slate-100">{editingId ? 'Edit Transaction' : 'Add Transaction'}</h2>
+                <h2 className="text-2xl font-bold text-slate-900 dark:text-slate-100">{editingId ? 'Edit Transaction' : 'Add Transaction'}</h2>
                 {editingId && (
                     <button onClick={handleDelete} className="p-2 text-red-500 hover:bg-red-500/10 rounded-full transition">
                         <Trash2 size={20} />
@@ -99,14 +134,14 @@ export const TransactionManager: React.FC<Props> = ({ editingId, onComplete }) =
             
             <form onSubmit={handleSubmit} className="space-y-6">
                 <div>
-                    <label className="block text-xs font-medium text-neutral-400 mb-2 uppercase">Amount</label>
+                    <label className="block text-xs font-medium text-neutral-500 dark:text-neutral-400 mb-2 uppercase">Amount</label>
                     <div className="relative">
-                        <span className="absolute left-4 top-1/2 -translate-y-1/2 text-neutral-500 font-semibold">₹</span>
+                        <span className="absolute left-4 top-1/2 -translate-y-1/2 text-neutral-400 dark:text-neutral-500 font-semibold">₹</span>
                         <input 
                             type="number" 
                             value={amount} 
                             onChange={e => setAmount(e.target.value)}
-                            className="w-full bg-neutral-900 border border-neutral-800 rounded-2xl py-4 pl-10 pr-4 text-3xl font-bold text-white focus:ring-2 focus:ring-emerald-500/50 outline-none transition-all placeholder-neutral-700"
+                            className="w-full bg-white dark:bg-neutral-900 border border-slate-200 dark:border-neutral-800 rounded-2xl py-4 pl-10 pr-4 text-3xl font-bold text-slate-900 dark:text-white focus:ring-2 focus:ring-emerald-500/50 outline-none transition-all placeholder-neutral-300 dark:placeholder-neutral-700"
                             placeholder="0.00"
                             autoFocus={!editingId}
                         />
@@ -114,36 +149,36 @@ export const TransactionManager: React.FC<Props> = ({ editingId, onComplete }) =
                 </div>
 
                 <div>
-                    <label className="block text-xs font-medium text-neutral-400 mb-2 uppercase flex justify-between">
+                    <label className="block text-xs font-medium text-neutral-500 dark:text-neutral-400 mb-2 uppercase flex justify-between">
                         Description
-                        {isPredicting && <span className="text-emerald-400 flex items-center text-[10px]"><Wand2 size={12} className="mr-1 animate-pulse"/> AI Predicting...</span>}
+                        {isPredicting && <span className="text-emerald-500 flex items-center text-[10px]"><Wand2 size={12} className="mr-1 animate-pulse"/> AI Predicting...</span>}
                     </label>
                     <input 
                         type="text" 
                         value={description} 
                         onChange={e => setDescription(e.target.value)}
-                        className="w-full bg-neutral-900 border border-neutral-800 rounded-xl py-3 px-4 text-slate-200 focus:border-emerald-500 outline-none transition-all"
+                        className="w-full bg-white dark:bg-neutral-900 border border-slate-200 dark:border-neutral-800 rounded-xl py-3 px-4 text-slate-900 dark:text-slate-200 focus:border-emerald-500 outline-none transition-all"
                         placeholder="e.g. Dinner at Mario's"
                     />
                 </div>
 
                 <div className="grid grid-cols-2 gap-4">
                     <div>
-                        <label className="block text-xs font-medium text-neutral-400 mb-2 uppercase">Category</label>
+                        <label className="block text-xs font-medium text-neutral-500 dark:text-neutral-400 mb-2 uppercase">Category</label>
                         <input 
                             type="text" 
                             value={category} 
                             onChange={e => setCategory(e.target.value)}
-                            className="w-full bg-neutral-900 border border-neutral-800 rounded-xl py-3 px-4 text-slate-200 focus:border-emerald-500 outline-none transition-all"
+                            className="w-full bg-white dark:bg-neutral-900 border border-slate-200 dark:border-neutral-800 rounded-xl py-3 px-4 text-slate-900 dark:text-slate-200 focus:border-emerald-500 outline-none transition-all"
                             placeholder="Food"
                         />
                     </div>
                     <div>
-                        <label className="block text-xs font-medium text-neutral-400 mb-2 uppercase">Type</label>
+                        <label className="block text-xs font-medium text-neutral-500 dark:text-neutral-400 mb-2 uppercase">Type</label>
                         <select 
                             value={type} 
                             onChange={e => setType(e.target.value as TransactionType)}
-                            className="w-full bg-neutral-900 border border-neutral-800 rounded-xl py-3 px-4 text-slate-200 focus:border-emerald-500 outline-none appearance-none"
+                            className="w-full bg-white dark:bg-neutral-900 border border-slate-200 dark:border-neutral-800 rounded-xl py-3 px-4 text-slate-900 dark:text-slate-200 focus:border-emerald-500 outline-none appearance-none"
                         >
                             {Object.values(TransactionType).map(t => (
                                 <option key={t} value={t}>{t}</option>
@@ -152,13 +187,61 @@ export const TransactionManager: React.FC<Props> = ({ editingId, onComplete }) =
                     </div>
                 </div>
 
+                {/* Tags Section */}
+                <div>
+                    <label className="block text-xs font-medium text-neutral-500 dark:text-neutral-400 mb-2 uppercase flex justify-between items-center">
+                        <span>Tags</span>
+                        <button 
+                            type="button" 
+                            onClick={handleSuggestTags}
+                            disabled={!description || isSuggestingTags}
+                            className="text-[10px] text-emerald-600 dark:text-emerald-400 flex items-center hover:underline disabled:opacity-50"
+                        >
+                            {isSuggestingTags ? <Loader2 size={12} className="animate-spin mr-1"/> : <Wand2 size={12} className="mr-1" />}
+                            Suggest Tags
+                        </button>
+                    </label>
+                    <div className="bg-white dark:bg-neutral-900 border border-slate-200 dark:border-neutral-800 rounded-xl p-3">
+                        <div className="flex flex-wrap gap-2 mb-2">
+                            {tags.map(tag => (
+                                <span key={tag} className="inline-flex items-center px-2.5 py-1 rounded-lg text-xs font-medium bg-slate-100 dark:bg-neutral-800 text-slate-700 dark:text-slate-300">
+                                    {tag}
+                                    <button type="button" onClick={() => removeTag(tag)} className="ml-1.5 hover:text-red-500"><X size={12} /></button>
+                                </span>
+                            ))}
+                            <input 
+                                type="text"
+                                value={tagInput}
+                                onChange={e => setTagInput(e.target.value)}
+                                onKeyDown={handleTagKeyDown}
+                                placeholder={tags.length === 0 ? "Add tags..." : ""}
+                                className="bg-transparent text-sm outline-none text-slate-900 dark:text-white placeholder-neutral-400 min-w-[80px] flex-1"
+                            />
+                        </div>
+                    </div>
+                    {suggestedTags.length > 0 && (
+                        <div className="flex flex-wrap gap-2 mt-2 animate-in fade-in slide-in-from-top-1">
+                            {suggestedTags.map(tag => (
+                                <button 
+                                    key={tag} 
+                                    type="button" 
+                                    onClick={() => addTag(tag)}
+                                    className="px-2 py-1 rounded-lg text-xs border border-dashed border-emerald-500/50 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-900/20 transition-colors flex items-center"
+                                >
+                                    <Plus size={10} className="mr-1" /> {tag}
+                                </button>
+                            ))}
+                        </div>
+                    )}
+                </div>
+
                 {(type === TransactionType.LENT || type === TransactionType.BORROWED) && (
                      <div className="animate-in fade-in slide-in-from-top-2 duration-300">
-                        <label className="block text-xs font-medium text-neutral-400 mb-2 uppercase">With Whom?</label>
+                        <label className="block text-xs font-medium text-neutral-500 dark:text-neutral-400 mb-2 uppercase">With Whom?</label>
                         <select 
                             value={personId} 
                             onChange={e => setPersonId(e.target.value)}
-                            className="w-full bg-neutral-900 border border-neutral-800 rounded-xl py-3 px-4 text-slate-200 focus:border-amber-500 outline-none appearance-none"
+                            className="w-full bg-white dark:bg-neutral-900 border border-slate-200 dark:border-neutral-800 rounded-xl py-3 px-4 text-slate-900 dark:text-slate-200 focus:border-amber-500 outline-none appearance-none"
                             required
                         >
                             <option value="">Select Person</option>

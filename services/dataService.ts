@@ -4,6 +4,8 @@ import { Transaction, Person, TransactionType, Group, GroupExpense, Budget, User
 const BASE_KEYS = {
   USERS: 'flowfin_users',
   SESSION: 'flowfin_current_user_id',
+  PUBLIC_PROFILES: 'flowfin_public_profiles',
+  SYSTEM_ANNOUNCEMENT: 'flowfin_system_announcement',
   // Specific data keys will be generated dynamically: `flowfin_${userId}_transactions`
 };
 
@@ -21,9 +23,9 @@ const getCurrentUserId = (): string | null => {
 };
 
 // Helper to get key for current user
-const getUserKey = (keySuffix: string): string => {
-    const uid = getCurrentUserId();
-    if (!uid) return `flowfin_anon_${keySuffix}`; // Fallback, though app should block this
+const getUserKey = (keySuffix: string, userId?: string): string => {
+    const uid = userId || getCurrentUserId();
+    if (!uid) return `flowfin_anon_${keySuffix}`; // Fallback
     return `flowfin_${uid}_${keySuffix}`;
 };
 
@@ -41,6 +43,28 @@ const updatePersonBalance = (personId: string, amount: number, type: Transaction
         people[idx].lastInteraction = new Date().toISOString();
         localStorage.setItem(key, JSON.stringify(people));
     }
+};
+
+const updatePublicProfile = (user: UserProfile) => {
+    const profilesStr = localStorage.getItem(BASE_KEYS.PUBLIC_PROFILES) || '[]';
+    const profiles = JSON.parse(profilesStr);
+    const existingIdx = profiles.findIndex((p: any) => p.id === user.id);
+    
+    const summary = {
+        id: user.id,
+        name: user.name,
+        email: user.email,
+        lastActive: new Date().toISOString(),
+        // We can't easily count transactions here efficiently without loading them, 
+        // so we'll just update timestamp on login
+    };
+
+    if (existingIdx >= 0) {
+        profiles[existingIdx] = { ...profiles[existingIdx], ...summary };
+    } else {
+        profiles.push(summary);
+    }
+    localStorage.setItem(BASE_KEYS.PUBLIC_PROFILES, JSON.stringify(profiles));
 };
 
 export const dataService = {
@@ -64,6 +88,9 @@ export const dataService = {
       users.push(newUser);
       localStorage.setItem(BASE_KEYS.USERS, JSON.stringify(users));
       
+      // Update public profile for Admin view
+      updatePublicProfile(newUser);
+
       // Auto login
       localStorage.setItem(BASE_KEYS.SESSION, newUser.id);
       return true;
@@ -76,6 +103,7 @@ export const dataService = {
       const user = users.find(u => u.email === email && u.passwordHash === password);
       if (user) {
           localStorage.setItem(BASE_KEYS.SESSION, user.id);
+          updatePublicProfile(user); // Update last active
           return true;
       }
       return false;
@@ -97,7 +125,6 @@ export const dataService = {
   },
 
   forgotPassword: (email: string): string => {
-      // Mock functionality
       const users: UserProfile[] = JSON.parse(localStorage.getItem(BASE_KEYS.USERS) || '[]');
       const user = users.find(u => u.email === email);
       if (user) {
@@ -119,6 +146,60 @@ export const dataService = {
           return true;
       }
       return false;
+  },
+
+  // --- ADMIN GOD MODE METHODS ---
+
+  getAllProfiles: () => {
+      return JSON.parse(localStorage.getItem(BASE_KEYS.PUBLIC_PROFILES) || '[]');
+  },
+
+  getGlobalStats: () => {
+      const profiles = JSON.parse(localStorage.getItem(BASE_KEYS.PUBLIC_PROFILES) || '[]');
+      return {
+          totalUsers: profiles.length,
+          systemStatus: 'Operational',
+      };
+  },
+
+  impersonateUser: (userId: string) => {
+      localStorage.setItem(BASE_KEYS.SESSION, userId);
+  },
+
+  nukeUser: (userId: string) => {
+      // 1. Remove from Users Auth
+      const users: UserProfile[] = JSON.parse(localStorage.getItem(BASE_KEYS.USERS) || '[]');
+      const updatedUsers = users.filter(u => u.id !== userId);
+      localStorage.setItem(BASE_KEYS.USERS, JSON.stringify(updatedUsers));
+
+      // 2. Remove from Public Profiles
+      const profiles = JSON.parse(localStorage.getItem(BASE_KEYS.PUBLIC_PROFILES) || '[]');
+      const updatedProfiles = profiles.filter((p: any) => p.id !== userId);
+      localStorage.setItem(BASE_KEYS.PUBLIC_PROFILES, JSON.stringify(updatedProfiles));
+
+      // 3. Wipe User Data Collections
+      // Note: In local storage simulation, we iterate known keys. In Firestore, we'd delete collections.
+      const keysToDelete = [
+          `flowfin_${userId}_transactions`,
+          `flowfin_${userId}_people`,
+          `flowfin_${userId}_budgets`,
+          `flowfin_${userId}_groups`,
+          `flowfin_${userId}_group_expenses`,
+          `flowfin_${userId}_gemini_key`
+      ];
+      keysToDelete.forEach(k => localStorage.removeItem(k));
+  },
+
+  setSystemAnnouncement: (msg: string) => {
+      if (!msg) {
+          localStorage.removeItem(BASE_KEYS.SYSTEM_ANNOUNCEMENT);
+      } else {
+          localStorage.setItem(BASE_KEYS.SYSTEM_ANNOUNCEMENT, msg);
+      }
+  },
+
+  getSystemAnnouncement: (): string | null => {
+      return localStorage.getItem(BASE_KEYS.SYSTEM_ANNOUNCEMENT);
   },
 
   // --- DATA METHODS (User Scoped) ---

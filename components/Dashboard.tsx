@@ -1,8 +1,9 @@
+
 import React, { useState, useEffect } from 'react';
-import { Transaction, TransactionType } from '../types';
+import { Transaction, TransactionType, AIInsight } from '../types';
 import { dataService } from '../services/dataService';
 import { geminiService } from '../services/geminiService';
-import { Search, Sparkles, ArrowUpRight, ArrowDownLeft, Wallet, Pencil, Trash2 } from 'lucide-react';
+import { Search, Sparkles, ArrowUpRight, ArrowDownLeft, Wallet, Pencil, Trash2, Zap, AlertTriangle, TrendingUp, CheckCircle, Bell } from 'lucide-react';
 
 interface Props {
     onEditTransaction: (id: string) => void;
@@ -14,21 +15,39 @@ export const Dashboard: React.FC<Props> = ({ onEditTransaction }) => {
   const [loadingSummary, setLoadingSummary] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [isSearching, setIsSearching] = useState(false);
+  const [insights, setInsights] = useState<AIInsight[]>([]);
+  const [loadingInsights, setLoadingInsights] = useState(false);
+  const [systemMsg, setSystemMsg] = useState<string | null>(null);
 
   useEffect(() => {
     loadData();
   }, []);
 
-  const loadData = () => {
+  const loadData = async () => {
     const txs = dataService.getTransactions();
     // Sort by date desc
-    setTransactions(txs.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()));
+    const sortedTxs = txs.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+    setTransactions(sortedTxs);
+    
+    // System Announcement
+    setSystemMsg(dataService.getSystemAnnouncement());
+
+    // Load Insights occasionally or if empty
+    if (sortedTxs.length > 0) {
+        setLoadingInsights(true);
+        // In a real app we might cache this to avoid too many calls
+        geminiService.generateDashboardInsights(sortedTxs).then(res => {
+            setInsights(res);
+            setLoadingInsights(false);
+        });
+    }
   };
 
   const handleSmartSearch = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!searchQuery.trim()) {
-        loadData();
+        const txs = dataService.getTransactions();
+        setTransactions(txs.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()));
         return;
     }
     setIsSearching(true);
@@ -58,7 +77,8 @@ export const Dashboard: React.FC<Props> = ({ onEditTransaction }) => {
       e.stopPropagation();
       if(confirm("Delete this transaction?")) {
           dataService.deleteTransaction(id);
-          loadData();
+          const txs = dataService.getTransactions();
+          setTransactions(txs.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()));
       }
   };
 
@@ -79,58 +99,105 @@ export const Dashboard: React.FC<Props> = ({ onEditTransaction }) => {
 
   return (
     <div className="p-6 space-y-6 pt-10">
+        
+        {/* System Announcement Banner */}
+        {systemMsg && (
+            <div className="bg-amber-500/10 border border-amber-500/50 p-3 rounded-xl flex items-start gap-3 animate-in slide-in-from-top-4">
+                <Bell className="text-amber-600 dark:text-amber-500 shrink-0 mt-0.5" size={16} />
+                <div>
+                    <h3 className="text-xs font-bold text-amber-800 dark:text-amber-400 uppercase mb-1">System Announcement</h3>
+                    <p className="text-sm text-amber-900 dark:text-amber-100">{systemMsg}</p>
+                </div>
+            </div>
+        )}
+
         {/* Header */}
         <div className="flex justify-between items-center">
             <div>
-                <h1 className="text-sm font-medium text-neutral-400 uppercase tracking-wider">Net Balance</h1>
-                <div className="text-4xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-amber-200 to-emerald-400">
+                <h1 className="text-sm font-medium text-neutral-500 dark:text-neutral-400 uppercase tracking-wider">Net Balance</h1>
+                <div className="text-4xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-amber-500 to-emerald-600 dark:from-amber-200 dark:to-emerald-400">
                     ₹{totalBalance.toLocaleString()}
                 </div>
             </div>
-            <div className="p-3 bg-neutral-900 rounded-full border border-neutral-800">
+            <div className="p-3 bg-white dark:bg-neutral-900 rounded-full border border-slate-200 dark:border-neutral-800 shadow-sm dark:shadow-none">
                 <Wallet className="text-emerald-500" size={24} />
             </div>
         </div>
 
         {/* Quick Stats */}
         <div className="grid grid-cols-2 gap-4">
-            <div className="bg-neutral-900/50 p-4 rounded-2xl border border-neutral-800 backdrop-blur-sm">
-                <div className="flex items-center space-x-2 text-emerald-400 mb-1">
+            <div className="bg-white/60 dark:bg-neutral-900/50 p-4 rounded-2xl border border-slate-200 dark:border-neutral-800 backdrop-blur-sm">
+                <div className="flex items-center space-x-2 text-emerald-600 dark:text-emerald-400 mb-1">
                     <ArrowDownLeft size={16} />
                     <span className="text-xs font-semibold uppercase">You Receive</span>
                 </div>
-                <div className="text-xl font-bold text-slate-100">₹{pendingIn}</div>
+                <div className="text-xl font-bold text-slate-900 dark:text-slate-100">₹{pendingIn}</div>
             </div>
-            <div className="bg-neutral-900/50 p-4 rounded-2xl border border-neutral-800 backdrop-blur-sm">
-                <div className="flex items-center space-x-2 text-amber-400 mb-1">
+            <div className="bg-white/60 dark:bg-neutral-900/50 p-4 rounded-2xl border border-slate-200 dark:border-neutral-800 backdrop-blur-sm">
+                <div className="flex items-center space-x-2 text-amber-500 dark:text-amber-400 mb-1">
                     <ArrowUpRight size={16} />
                     <span className="text-xs font-semibold uppercase">You Owe</span>
                 </div>
-                <div className="text-xl font-bold text-slate-100">₹{pendingOut}</div>
+                <div className="text-xl font-bold text-slate-900 dark:text-slate-100">₹{pendingOut}</div>
             </div>
         </div>
 
+        {/* AI Insights Feed */}
+        {insights.length > 0 && (
+            <div className="space-y-3">
+                 <h3 className="text-sm font-semibold text-neutral-500 dark:text-neutral-400 flex items-center gap-2">
+                    <Zap size={16} className="text-amber-500" />
+                    AI Insights
+                </h3>
+                <div className="flex overflow-x-auto gap-4 pb-2 snap-x hide-scrollbar">
+                    {insights.map((insight, idx) => (
+                        <div key={idx} className={`snap-center shrink-0 w-64 p-4 rounded-2xl border ${
+                            insight.type === 'warning' 
+                            ? 'bg-red-50 dark:bg-red-900/10 border-red-200 dark:border-red-900/30' 
+                            : insight.type === 'good' 
+                            ? 'bg-emerald-50 dark:bg-emerald-900/10 border-emerald-200 dark:border-emerald-900/30'
+                            : 'bg-white dark:bg-neutral-900 border-slate-200 dark:border-neutral-800'
+                        }`}>
+                            <div className="flex items-center gap-2 mb-2">
+                                {insight.type === 'warning' && <AlertTriangle size={16} className="text-red-500" />}
+                                {insight.type === 'good' && <CheckCircle size={16} className="text-emerald-500" />}
+                                {insight.type === 'neutral' && <TrendingUp size={16} className="text-neutral-500" />}
+                                <h4 className={`text-sm font-bold ${
+                                    insight.type === 'warning' ? 'text-red-700 dark:text-red-300' : 
+                                    insight.type === 'good' ? 'text-emerald-700 dark:text-emerald-300' : 
+                                    'text-slate-700 dark:text-slate-300'
+                                }`}>{insight.title}</h4>
+                            </div>
+                            <p className="text-xs text-slate-600 dark:text-neutral-400 leading-relaxed">
+                                {insight.description}
+                            </p>
+                        </div>
+                    ))}
+                </div>
+            </div>
+        )}
+
         {/* AI Summary Card */}
-        <div className="relative overflow-hidden p-[1px] rounded-2xl bg-gradient-to-r from-amber-500/20 to-emerald-500/20">
-            <div className="bg-neutral-900/90 rounded-2xl p-5 relative">
+        <div className="relative overflow-hidden p-[1px] rounded-2xl bg-gradient-to-r from-amber-500/30 to-emerald-500/30">
+            <div className="bg-white/95 dark:bg-neutral-900/90 rounded-2xl p-5 relative">
                 <div className="flex justify-between items-start mb-2">
-                    <h3 className="flex items-center text-sm font-semibold text-slate-200">
-                        <Sparkles size={16} className="text-amber-300 mr-2" />
-                        AI Weekly Insight
+                    <h3 className="flex items-center text-sm font-semibold text-slate-800 dark:text-slate-200">
+                        <Sparkles size={16} className="text-amber-500 dark:text-amber-300 mr-2" />
+                        AI Weekly Summary
                     </h3>
                     {!summary && !loadingSummary && (
-                        <button onClick={generateSummary} className="text-xs bg-neutral-800 hover:bg-neutral-700 px-3 py-1 rounded-full text-neutral-300 transition">
+                        <button onClick={generateSummary} className="text-xs bg-slate-100 hover:bg-slate-200 dark:bg-neutral-800 dark:hover:bg-neutral-700 px-3 py-1 rounded-full text-slate-600 dark:text-neutral-300 transition">
                             Generate
                         </button>
                     )}
                 </div>
                 {loadingSummary ? (
                     <div className="animate-pulse space-y-2">
-                        <div className="h-3 bg-neutral-800 rounded w-3/4"></div>
-                        <div className="h-3 bg-neutral-800 rounded w-1/2"></div>
+                        <div className="h-3 bg-slate-200 dark:bg-neutral-800 rounded w-3/4"></div>
+                        <div className="h-3 bg-slate-200 dark:bg-neutral-800 rounded w-1/2"></div>
                     </div>
                 ) : (
-                    <p className="text-sm text-neutral-400 leading-relaxed">
+                    <p className="text-sm text-slate-600 dark:text-neutral-400 leading-relaxed">
                         {summary || "Tap generate to get a smart breakdown of your recent financial habits."}
                     </p>
                 )}
@@ -140,53 +207,58 @@ export const Dashboard: React.FC<Props> = ({ onEditTransaction }) => {
         {/* Smart Search */}
         <form onSubmit={handleSmartSearch} className="relative group">
             <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                <Search className={`h-5 w-5 ${isSearching ? 'text-emerald-400 animate-pulse' : 'text-neutral-500'}`} />
+                <Search className={`h-5 w-5 ${isSearching ? 'text-emerald-500 animate-pulse' : 'text-neutral-400 dark:text-neutral-500'}`} />
             </div>
             <input
                 type="text"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="block w-full pl-10 pr-3 py-3 border border-neutral-800 rounded-xl leading-5 bg-neutral-900/50 text-slate-200 placeholder-neutral-500 focus:outline-none focus:bg-neutral-900 focus:ring-1 focus:ring-emerald-500/50 transition-all sm:text-sm"
+                className="block w-full pl-10 pr-3 py-3 border border-slate-200 dark:border-neutral-800 rounded-xl leading-5 bg-white dark:bg-neutral-900/50 text-slate-900 dark:text-slate-200 placeholder-neutral-400 dark:placeholder-neutral-500 focus:outline-none focus:bg-white dark:focus:bg-neutral-900 focus:ring-1 focus:ring-emerald-500/50 transition-all sm:text-sm shadow-sm dark:shadow-none"
                 placeholder="Ask FlowFin: 'Spent on food last week?'"
             />
         </form>
 
         {/* Recent Transactions List */}
         <div>
-            <h3 className="text-sm font-semibold text-neutral-400 mb-3">Recent Activity</h3>
+            <h3 className="text-sm font-semibold text-neutral-500 dark:text-neutral-400 mb-3">Recent Activity</h3>
             <div className="space-y-3">
                 {transactions.length === 0 ? (
-                   <p className="text-center text-neutral-600 py-4">No transactions found.</p> 
+                   <p className="text-center text-neutral-500 dark:text-neutral-600 py-4">No transactions found.</p> 
                 ) : (
                     transactions.slice(0, 5).map((t) => (
-                        <div key={t.id} className="group flex justify-between items-center p-3 hover:bg-neutral-900 rounded-xl transition-colors border border-transparent hover:border-neutral-800 relative">
+                        <div key={t.id} className="group flex justify-between items-center p-3 bg-white dark:bg-transparent hover:bg-slate-50 dark:hover:bg-neutral-900 rounded-xl transition-colors border border-transparent hover:border-slate-100 dark:hover:border-neutral-800 relative">
                             <div className="flex items-center space-x-3">
                                 <div className={`w-10 h-10 rounded-full flex items-center justify-center text-lg ${
-                                    t.type === TransactionType.SPENT ? 'bg-neutral-800 text-neutral-400' :
-                                    t.type === TransactionType.RECEIVED ? 'bg-emerald-500/10 text-emerald-500' :
-                                    'bg-amber-500/10 text-amber-500'
+                                    t.type === TransactionType.SPENT ? 'bg-slate-100 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-400' :
+                                    t.type === TransactionType.RECEIVED ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-500' :
+                                    'bg-amber-500/10 text-amber-600 dark:text-amber-500'
                                 }`}>
                                     {t.category[0]}
                                 </div>
                                 <div>
-                                    <p className="text-sm font-medium text-slate-200">{t.description}</p>
-                                    <p className="text-xs text-neutral-500">{new Date(t.date).toLocaleDateString()}</p>
+                                    <p className="text-sm font-medium text-slate-900 dark:text-slate-200">{t.description}</p>
+                                    <div className="flex items-center gap-2">
+                                        <p className="text-xs text-neutral-500">{new Date(t.date).toLocaleDateString()}</p>
+                                        {t.tags && t.tags.length > 0 && (
+                                            <span className="text-[10px] text-neutral-400">#{t.tags[0]}</span>
+                                        )}
+                                    </div>
                                 </div>
                             </div>
                             <div className="flex items-center gap-3">
                                 <span className={`font-semibold text-sm ${
-                                    t.type === TransactionType.SPENT ? 'text-neutral-300' : 
-                                    t.type === TransactionType.RECEIVED ? 'text-emerald-400' : 'text-amber-400'
+                                    t.type === TransactionType.SPENT ? 'text-slate-700 dark:text-neutral-300' : 
+                                    t.type === TransactionType.RECEIVED ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-600 dark:text-amber-400'
                                 }`}>
                                     {t.type === TransactionType.SPENT ? '-' : '+'}₹{t.amount}
                                 </span>
                                 
                                 {/* Edit/Delete Actions */}
-                                <div className="flex items-center gap-1 bg-neutral-950/50 rounded-lg p-1 border border-neutral-800/50">
-                                    <button onClick={(e) => handleEdit(e, t.id)} className="p-1.5 hover:bg-neutral-800 rounded-md text-neutral-500 hover:text-white transition-colors">
+                                <div className="flex items-center gap-1 bg-slate-100 dark:bg-neutral-950/50 rounded-lg p-1 border border-slate-200 dark:border-neutral-800/50">
+                                    <button onClick={(e) => handleEdit(e, t.id)} className="p-1.5 hover:bg-slate-200 dark:hover:bg-neutral-800 rounded-md text-neutral-500 dark:hover:text-white transition-colors">
                                         <Pencil size={14} />
                                     </button>
-                                    <button onClick={(e) => handleDelete(e, t.id)} className="p-1.5 hover:bg-red-900/20 rounded-md text-neutral-500 hover:text-red-400 transition-colors">
+                                    <button onClick={(e) => handleDelete(e, t.id)} className="p-1.5 hover:bg-red-100 dark:hover:bg-red-900/20 rounded-md text-neutral-500 hover:text-red-500 dark:hover:text-red-400 transition-colors">
                                         <Trash2 size={14} />
                                     </button>
                                 </div>

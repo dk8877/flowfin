@@ -1,7 +1,7 @@
 
 import { GoogleGenAI, Type } from "@google/genai";
 import { dataService } from "./dataService";
-import { Transaction, TransactionType } from "../types";
+import { Transaction, TransactionType, AIInsight } from "../types";
 
 // --- CONFIGURATION ---
 // PASTE YOUR PERMANENT API KEY HERE to allow everyone to use the app's AI features.
@@ -37,6 +37,19 @@ export const geminiService = {
           return true;
       } catch (e) {
           return false;
+      }
+  },
+
+  runRawPrompt: async (prompt: string): Promise<string> => {
+      try {
+          const ai = getAI();
+          const response = await ai.models.generateContent({
+              model: 'gemini-2.5-flash',
+              contents: prompt
+          });
+          return response.text || "No response";
+      } catch (e: any) {
+          return `Error: ${e.message}`;
       }
   },
 
@@ -107,6 +120,59 @@ export const geminiService = {
       return JSON.parse(response.text || '{"category": "General", "type": "SPENT"}');
     } catch (error) {
       return { category: "General", type: "SPENT" };
+    }
+  },
+
+  suggestTags: async (description: string): Promise<string[]> => {
+    try {
+        const ai = getAI();
+        const schema = {
+            type: Type.ARRAY,
+            items: { type: Type.STRING }
+        };
+
+        const response = await ai.models.generateContent({
+            model: 'gemini-2.5-flash',
+            contents: `Generate 3-5 relevant, short, lowercase tags (e.g., 'luxury', 'essential', 'subscription') for a transaction description: "${description}". Return JSON array.`,
+            config: {
+                responseMimeType: "application/json",
+                responseSchema: schema
+            }
+        });
+        return JSON.parse(response.text || "[]");
+    } catch (e) {
+        return [];
+    }
+  },
+
+  generateDashboardInsights: async (transactions: Transaction[]): Promise<AIInsight[]> => {
+    try {
+        const ai = getAI();
+        const dataStr = JSON.stringify(transactions.slice(0, 30)); // Analyze last 30
+        
+        const schema = {
+            type: Type.ARRAY,
+            items: {
+                type: Type.OBJECT,
+                properties: {
+                    title: { type: Type.STRING },
+                    description: { type: Type.STRING },
+                    type: { type: Type.STRING, enum: ['good', 'warning', 'neutral'] }
+                }
+            }
+        };
+
+        const response = await ai.models.generateContent({
+            model: 'gemini-2.5-flash',
+            contents: `Analyze these transactions for specific anomalies (spikes), achievements (saving), or recurring patterns. Generate 2-3 short insights. Return JSON. Data: ${dataStr}`,
+            config: {
+                responseMimeType: "application/json",
+                responseSchema: schema
+            }
+        });
+        return JSON.parse(response.text || "[]");
+    } catch (e) {
+        return [];
     }
   },
 
