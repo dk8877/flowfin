@@ -20,7 +20,19 @@ export const AdminDashboard: React.FC<Props> = ({ onExit, onMasquerade }) => {
 
     useEffect(() => {
         loadData();
+        
+        // HEARTBEAT: Keep the Admin Lock alive every minute
+        const lockInterval = setInterval(() => {
+            dataService.refreshAdminLock();
+        }, 60 * 1000);
+
+        return () => clearInterval(lockInterval);
     }, []);
+
+    const handleExit = () => {
+        dataService.releaseAdminLock();
+        onExit();
+    };
 
     const loadData = () => {
         setProfiles(dataService.getAllProfiles());
@@ -65,7 +77,7 @@ export const AdminDashboard: React.FC<Props> = ({ onExit, onMasquerade }) => {
                     </div>
                 </div>
                 <button 
-                    onClick={onExit}
+                    onClick={handleExit}
                     className="flex items-center gap-2 px-4 py-2 rounded-lg border border-amber-900/50 hover:bg-amber-900/20 text-amber-600 transition"
                 >
                     <ArrowLeft size={16} /> Exit

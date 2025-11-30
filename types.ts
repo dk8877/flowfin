@@ -59,6 +59,9 @@ export interface SearchFilters {
 export interface UserProfile {
   id: string;
   email: string;
-  passwordHash: string; // Storing plain text for demo, hash in real app
   name: string;
+  password?: string; // App-specific password
+  photoURL?: string; // Google Profile Pic URL
+  lastLogin: string;
+  deviceType: string;
 }

@@ -3,7 +3,8 @@ import React, { useState, useEffect } from 'react';
 import { Transaction, TransactionType, AIInsight } from '../types';
 import { dataService } from '../services/dataService';
 import { geminiService } from '../services/geminiService';
-import { Search, Sparkles, ArrowUpRight, ArrowDownLeft, Wallet, Pencil, Trash2, Zap, AlertTriangle, TrendingUp, CheckCircle, Bell } from 'lucide-react';
+import { pdfService } from '../services/pdfService';
+import { Search, Sparkles, ArrowUpRight, ArrowDownLeft, Wallet, Pencil, Trash2, Zap, AlertTriangle, TrendingUp, CheckCircle, Bell, Download, Loader2 } from 'lucide-react';
 
 interface Props {
     onEditTransaction: (id: string) => void;
@@ -18,6 +19,7 @@ export const Dashboard: React.FC<Props> = ({ onEditTransaction }) => {
   const [insights, setInsights] = useState<AIInsight[]>([]);
   const [loadingInsights, setLoadingInsights] = useState(false);
   const [systemMsg, setSystemMsg] = useState<string | null>(null);
+  const [exporting, setExporting] = useState(false);
 
   useEffect(() => {
     loadData();
@@ -85,6 +87,12 @@ export const Dashboard: React.FC<Props> = ({ onEditTransaction }) => {
   const handleEdit = (e: React.MouseEvent, id: string) => {
       e.stopPropagation();
       onEditTransaction(id);
+  };
+
+  const handleExportPdf = async () => {
+      setExporting(true);
+      await pdfService.generateReport(transactions, 'Transaction History');
+      setExporting(false);
   };
 
   // Calculations
@@ -220,7 +228,17 @@ export const Dashboard: React.FC<Props> = ({ onEditTransaction }) => {
 
         {/* Recent Transactions List */}
         <div>
-            <h3 className="text-sm font-semibold text-neutral-500 dark:text-neutral-400 mb-3">Recent Activity</h3>
+            <div className="flex justify-between items-center mb-3">
+                <h3 className="text-sm font-semibold text-neutral-500 dark:text-neutral-400">Recent Activity</h3>
+                <button 
+                    onClick={handleExportPdf}
+                    disabled={exporting}
+                    className="flex items-center gap-2 text-xs font-medium text-emerald-600 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-900/20 px-2 py-1 rounded-lg transition"
+                >
+                    {exporting ? <Loader2 size={14} className="animate-spin" /> : <Download size={14} />}
+                    Download Report
+                </button>
+            </div>
             <div className="space-y-3">
                 {transactions.length === 0 ? (
                    <p className="text-center text-neutral-500 dark:text-neutral-600 py-4">No transactions found.</p> 

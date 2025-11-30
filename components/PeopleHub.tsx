@@ -1,8 +1,10 @@
+
 import React, { useState, useEffect } from 'react';
 import { Person } from '../types';
 import { dataService } from '../services/dataService';
 import { geminiService } from '../services/geminiService';
-import { MessageCircle, CheckCircle, Plus, User, Pencil, Trash2, X, Save } from 'lucide-react';
+import { pdfService } from '../services/pdfService';
+import { MessageCircle, CheckCircle, Plus, User, Pencil, Trash2, X, Save, FileText, Loader2 } from 'lucide-react';
 
 export const PeopleHub: React.FC = () => {
     const [people, setPeople] = useState<Person[]>([]);
@@ -11,6 +13,7 @@ export const PeopleHub: React.FC = () => {
     const [draftingFor, setDraftingFor] = useState<string | null>(null);
     const [editingId, setEditingId] = useState<string | null>(null);
     const [editName, setEditName] = useState('');
+    const [exportingId, setExportingId] = useState<string | null>(null);
 
     useEffect(() => {
         setPeople(dataService.getPeople());
@@ -44,6 +47,18 @@ export const PeopleHub: React.FC = () => {
         alert(`AI Drafted Message copied to clipboard:\n\n"${msg}"`);
         await navigator.clipboard.writeText(msg);
         setDraftingFor(null);
+    };
+
+    const handleExportStatement = async (e: React.MouseEvent, person: Person) => {
+        e.stopPropagation();
+        setExportingId(person.id);
+        
+        // Fetch all transactions and filter for this person
+        const allTx = dataService.getTransactions();
+        const personTx = allTx.filter(t => t.personId === person.id).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+        
+        await pdfService.generateReport(personTx, `Statement: ${person.name}`, `Net Balance: ${person.netBalance >= 0 ? '+' : ''}${person.netBalance}`);
+        setExportingId(null);
     };
 
     const startEdit = (e: React.MouseEvent, person: Person) => {
@@ -161,6 +176,14 @@ export const PeopleHub: React.FC = () => {
                                 >
                                     <CheckCircle size={14} />
                                     Settle Up
+                                </button>
+                                <button 
+                                    onClick={(e) => handleExportStatement(e, person)}
+                                    disabled={exportingId === person.id}
+                                    className="w-10 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-neutral-800 dark:hover:bg-neutral-700 flex items-center justify-center text-neutral-500 hover:text-slate-900 dark:hover:text-white transition"
+                                    title="Download Statement"
+                                >
+                                    {exportingId === person.id ? <Loader2 size={14} className="animate-spin" /> : <FileText size={14} />}
                                 </button>
                             </div>
                         )}

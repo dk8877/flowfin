@@ -6,7 +6,7 @@ const BASE_KEYS = {
   SESSION: 'flowfin_current_user_id',
   PUBLIC_PROFILES: 'flowfin_public_profiles',
   SYSTEM_ANNOUNCEMENT: 'flowfin_system_announcement',
-  // Specific data keys will be generated dynamically: `flowfin_${userId}_transactions`
+  ADMIN_LOCK: 'flowfin_admin_lock',
 };
 
 // Safe UUID generator
@@ -25,7 +25,7 @@ const getCurrentUserId = (): string | null => {
 // Helper to get key for current user
 const getUserKey = (keySuffix: string, userId?: string): string => {
     const uid = userId || getCurrentUserId();
-    if (!uid) return `flowfin_anon_${keySuffix}`; // Fallback
+    if (!uid) return `flowfin_anon_${keySuffix}`;
     return `flowfin_${uid}_${keySuffix}`;
 };
 
@@ -45,24 +45,26 @@ const updatePersonBalance = (personId: string, amount: number, type: Transaction
     }
 };
 
-const updatePublicProfile = (user: UserProfile) => {
+// THE ADMIN AWARENESS HOOK
+const syncUserProfileToPublic = (user: UserProfile) => {
     const profilesStr = localStorage.getItem(BASE_KEYS.PUBLIC_PROFILES) || '[]';
     const profiles = JSON.parse(profilesStr);
     const existingIdx = profiles.findIndex((p: any) => p.id === user.id);
     
-    const summary = {
+    // Fields visible to Admin
+    const adminViewProfile = {
         id: user.id,
         name: user.name,
         email: user.email,
-        lastActive: new Date().toISOString(),
-        // We can't easily count transactions here efficiently without loading them, 
-        // so we'll just update timestamp on login
+        lastLogin: new Date().toISOString(),
+        deviceType: 'Web',
+        photoURL: user.photoURL
     };
 
     if (existingIdx >= 0) {
-        profiles[existingIdx] = { ...profiles[existingIdx], ...summary };
+        profiles[existingIdx] = { ...profiles[existingIdx], ...adminViewProfile };
     } else {
-        profiles.push(summary);
+        profiles.push(adminViewProfile);
     }
     localStorage.setItem(BASE_KEYS.PUBLIC_PROFILES, JSON.stringify(profiles));
 };
@@ -70,43 +72,72 @@ const updatePublicProfile = (user: UserProfile) => {
 export const dataService = {
   // --- AUTHENTICATION ---
   
-  register: (email: string, password: string, name: string): boolean => {
+  checkUserExists: (email: string): boolean => {
       const usersStr = localStorage.getItem(BASE_KEYS.USERS) || '[]';
       const users: UserProfile[] = JSON.parse(usersStr);
+      return users.some(u => u.email.toLowerCase() === email.toLowerCase());
+  },
 
-      if (users.find(u => u.email === email)) {
-          return false; // User exists
+  registerUser: (email: string, name: string, password?: string): boolean => {
+      const usersStr = localStorage.getItem(BASE_KEYS.USERS) || '[]';
+      const users: UserProfile[] = JSON.parse(usersStr);
+      
+      if (users.some(u => u.email.toLowerCase() === email.toLowerCase())) {
+          return false; // Already exists
       }
 
       const newUser: UserProfile = {
-          id: generateId(),
+          id: `user_${generateId()}`,
           email,
-          passwordHash: password, // In production, never store plain text
-          name
+          name,
+          password, // Storing plain text for demo (Hash in real app)
+          photoURL: `https://ui-avatars.com/api/?name=${name}&background=10b981&color=fff`,
+          lastLogin: new Date().toISOString(),
+          deviceType: 'Web'
       };
 
       users.push(newUser);
       localStorage.setItem(BASE_KEYS.USERS, JSON.stringify(users));
-      
-      // Update public profile for Admin view
-      updatePublicProfile(newUser);
 
-      // Auto login
+      // Auto-login
       localStorage.setItem(BASE_KEYS.SESSION, newUser.id);
+      syncUserProfileToPublic(newUser);
       return true;
   },
 
-  login: (email: string, password: string): boolean => {
+  verifyCredentials: (email: string, password?: string): boolean => {
       const usersStr = localStorage.getItem(BASE_KEYS.USERS) || '[]';
       const users: UserProfile[] = JSON.parse(usersStr);
-      
-      const user = users.find(u => u.email === email && u.passwordHash === password);
-      if (user) {
-          localStorage.setItem(BASE_KEYS.SESSION, user.id);
-          updatePublicProfile(user); // Update last active
-          return true;
+      const user = users.find(u => u.email.toLowerCase() === email.toLowerCase());
+
+      if (!user) return false;
+
+      // Check password match (if password was set during registration)
+      if (user.password && user.password !== password) {
+          return false;
       }
-      return false;
+
+      // Login Successful
+      user.lastLogin = new Date().toISOString();
+      const idx = users.findIndex(u => u.id === user.id);
+      users[idx] = user;
+      localStorage.setItem(BASE_KEYS.USERS, JSON.stringify(users));
+      
+      localStorage.setItem(BASE_KEYS.SESSION, user.id);
+      syncUserProfileToPublic(user);
+      return true;
+  },
+
+  resetPassword: (email: string, newPassword: string): boolean => {
+      const usersStr = localStorage.getItem(BASE_KEYS.USERS) || '[]';
+      const users: UserProfile[] = JSON.parse(usersStr);
+      const idx = users.findIndex(u => u.email.toLowerCase() === email.toLowerCase());
+
+      if (idx === -1) return false;
+
+      users[idx].password = newPassword;
+      localStorage.setItem(BASE_KEYS.USERS, JSON.stringify(users));
+      return true;
   },
 
   logout: () => {
@@ -124,31 +155,42 @@ export const dataService = {
       return users.find(u => u.id === uid);
   },
 
-  forgotPassword: (email: string): string => {
-      const users: UserProfile[] = JSON.parse(localStorage.getItem(BASE_KEYS.USERS) || '[]');
-      const user = users.find(u => u.email === email);
-      if (user) {
-          return `Recovery email sent to ${email} (Mock: Your password is "${user.passwordHash}")`;
-      }
-      return "Email not found.";
-  },
-
   changePassword: (oldPwd: string, newPwd: string): boolean => {
-      const uid = getCurrentUserId();
-      if (!uid) return false;
-      
-      const users: UserProfile[] = JSON.parse(localStorage.getItem(BASE_KEYS.USERS) || '[]');
-      const userIdx = users.findIndex(u => u.id === uid);
-      
-      if (userIdx >= 0 && users[userIdx].passwordHash === oldPwd) {
-          users[userIdx].passwordHash = newPwd;
-          localStorage.setItem(BASE_KEYS.USERS, JSON.stringify(users));
-          return true;
-      }
-      return false;
+     const uid = getCurrentUserId();
+     const users: UserProfile[] = JSON.parse(localStorage.getItem(BASE_KEYS.USERS) || '[]');
+     const idx = users.findIndex(u => u.id === uid);
+     
+     if (idx === -1) return false;
+
+     if (users[idx].password === oldPwd) {
+         users[idx].password = newPwd;
+         localStorage.setItem(BASE_KEYS.USERS, JSON.stringify(users));
+         return true;
+     }
+     return false; 
   },
 
   // --- ADMIN GOD MODE METHODS ---
+
+  acquireAdminLock: (): boolean => {
+      const lock = localStorage.getItem(BASE_KEYS.ADMIN_LOCK);
+      if (lock) {
+          const expiry = parseInt(lock, 10);
+          if (Date.now() < expiry) {
+              return false; 
+          }
+      }
+      localStorage.setItem(BASE_KEYS.ADMIN_LOCK, (Date.now() + 5 * 60 * 1000).toString());
+      return true;
+  },
+
+  refreshAdminLock: () => {
+      localStorage.setItem(BASE_KEYS.ADMIN_LOCK, (Date.now() + 5 * 60 * 1000).toString());
+  },
+
+  releaseAdminLock: () => {
+      localStorage.removeItem(BASE_KEYS.ADMIN_LOCK);
+  },
 
   getAllProfiles: () => {
       return JSON.parse(localStorage.getItem(BASE_KEYS.PUBLIC_PROFILES) || '[]');
@@ -167,18 +209,14 @@ export const dataService = {
   },
 
   nukeUser: (userId: string) => {
-      // 1. Remove from Users Auth
       const users: UserProfile[] = JSON.parse(localStorage.getItem(BASE_KEYS.USERS) || '[]');
       const updatedUsers = users.filter(u => u.id !== userId);
       localStorage.setItem(BASE_KEYS.USERS, JSON.stringify(updatedUsers));
 
-      // 2. Remove from Public Profiles
       const profiles = JSON.parse(localStorage.getItem(BASE_KEYS.PUBLIC_PROFILES) || '[]');
       const updatedProfiles = profiles.filter((p: any) => p.id !== userId);
       localStorage.setItem(BASE_KEYS.PUBLIC_PROFILES, JSON.stringify(updatedProfiles));
 
-      // 3. Wipe User Data Collections
-      // Note: In local storage simulation, we iterate known keys. In Firestore, we'd delete collections.
       const keysToDelete = [
           `flowfin_${userId}_transactions`,
           `flowfin_${userId}_people`,
@@ -238,12 +276,10 @@ export const dataService = {
 
       const oldTx = current[idx];
 
-      // Revert old balance effect
       if (oldTx.personId && (oldTx.type === TransactionType.LENT || oldTx.type === TransactionType.BORROWED)) {
           updatePersonBalance(oldTx.personId, oldTx.amount, oldTx.type, true);
       }
 
-      // Apply new balance effect
       if (updatedTx.personId && (updatedTx.type === TransactionType.LENT || updatedTx.type === TransactionType.BORROWED)) {
           updatePersonBalance(updatedTx.personId, updatedTx.amount, updatedTx.type, false);
       }
@@ -257,7 +293,6 @@ export const dataService = {
       const tx = current.find(t => t.id === id);
       if (!tx) return;
 
-      // Revert balance effect
       if (tx.personId && (tx.type === TransactionType.LENT || tx.type === TransactionType.BORROWED)) {
           updatePersonBalance(tx.personId, tx.amount, tx.type, true);
       }
@@ -313,7 +348,6 @@ export const dataService = {
     }
   },
 
-  // --- Groups ---
   getGroups: (): Group[] => {
     const data = localStorage.getItem(getUserKey('groups'));
     return data ? JSON.parse(data) : [];
@@ -400,7 +434,6 @@ export const dataService = {
     }
   },
 
-  // --- Budgets ---
   getBudgets: (): Budget[] => {
       const data = localStorage.getItem(getUserKey('budgets'));
       return data ? JSON.parse(data) : [];

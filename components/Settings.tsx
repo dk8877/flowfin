@@ -25,6 +25,7 @@ export const Settings: React.FC<Props> = ({ onLogout, isDarkMode = true, toggleT
     // Admin Gate
     const [showAdminPin, setShowAdminPin] = useState(false);
     const [pin, setPin] = useState('');
+    const [adminError, setAdminError] = useState('');
 
     useEffect(() => {
         const stored = dataService.getApiKey();
@@ -68,12 +69,19 @@ export const Settings: React.FC<Props> = ({ onLogout, isDarkMode = true, toggleT
     };
 
     const handleAdminAccess = () => {
+        setAdminError('');
         if (pin === '0000') {
-            onEnterAdmin && onEnterAdmin();
-            setShowAdminPin(false);
-            setPin('');
+            // Check for active session lock
+            const locked = dataService.acquireAdminLock();
+            if (locked) {
+                onEnterAdmin && onEnterAdmin();
+                setShowAdminPin(false);
+                setPin('');
+            } else {
+                setAdminError('Access Denied: Another Admin session is currently active.');
+            }
         } else {
-            alert('Access Denied');
+            setAdminError('Incorrect PIN');
         }
     };
 
@@ -245,6 +253,13 @@ export const Settings: React.FC<Props> = ({ onLogout, isDarkMode = true, toggleT
                             className="bg-black border border-neutral-800 rounded-xl px-4 py-3 text-center text-2xl tracking-[1em] text-white w-full mb-6 focus:border-amber-500 focus:outline-none"
                             autoFocus
                          />
+                         
+                         {adminError && (
+                             <div className="mb-4 text-xs font-semibold text-red-500 bg-red-900/10 p-2 rounded border border-red-900/30">
+                                 {adminError}
+                             </div>
+                         )}
+
                          <div className="flex gap-3">
                              <button onClick={() => setShowAdminPin(false)} className="flex-1 py-3 text-neutral-400 hover:text-white transition">Cancel</button>
                              <button onClick={handleAdminAccess} className="flex-1 py-3 bg-amber-600 text-black font-bold rounded-xl hover:bg-amber-500 transition">Unlock</button>

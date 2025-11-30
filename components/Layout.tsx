@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+
+import React, { useState, useTransition } from 'react';
 import { 
   LayoutDashboard, 
   List, 
@@ -10,7 +11,8 @@ import {
   Settings as SettingsIcon,
   Menu,
   X,
-  Plus
+  Plus,
+  Loader2
 } from 'lucide-react';
 
 interface LayoutProps {
@@ -21,12 +23,13 @@ interface LayoutProps {
 
 export const Layout: React.FC<LayoutProps> = ({ children, activeTab, onTabChange }) => {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [isPending, startTransition] = useTransition();
 
   const navItems = [
     { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
     { id: 'timeline', label: 'Timeline', icon: List },
     { id: 'budgets', label: 'Budgets', icon: Target },
-    { id: 'groups', label: 'Groups', icon: Users }, // Reusing Users icon differently or finding Group icon
+    { id: 'groups', label: 'Groups', icon: Users }, 
     { id: 'people', label: 'People', icon: Users },
     { id: 'add', label: 'New Transaction', icon: PlusCircle },
     { id: 'analytics', label: 'Analytics', icon: PieChart },
@@ -35,7 +38,10 @@ export const Layout: React.FC<LayoutProps> = ({ children, activeTab, onTabChange
   ];
 
   const handleNavClick = (id: string) => {
-    onTabChange(id);
+    // Wrap the state update in startTransition to prevent UI blocking (Fixes INP issue)
+    startTransition(() => {
+      onTabChange(id);
+    });
     setIsSidebarOpen(false);
   };
 
@@ -70,6 +76,12 @@ export const Layout: React.FC<LayoutProps> = ({ children, activeTab, onTabChange
                 >
                     <item.icon size={20} className={`mr-3 ${activeTab === item.id ? 'text-emerald-600 dark:text-emerald-400' : 'text-neutral-400 group-hover:text-emerald-500/70 transition-colors'}`} />
                     {item.label}
+                    {/* Show a mini spinner if this specific tab is loading */}
+                    {isPending && activeTab !== item.id && (item.id === 'analytics' || item.id === 'optimizer') && (
+                       <div className="ml-auto opacity-0 group-hover:opacity-100 transition-opacity">
+                          {/* Only hinting loading for heavy tabs */}
+                       </div>
+                    )}
                 </button>
             ))}
         </nav>
@@ -82,13 +94,14 @@ export const Layout: React.FC<LayoutProps> = ({ children, activeTab, onTabChange
             <button onClick={() => setIsSidebarOpen(true)} className="text-neutral-500 dark:text-neutral-400 p-2 -ml-2 hover:text-slate-900 dark:hover:text-white">
                 <Menu size={24} />
             </button>
-            <span className="ml-4 font-semibold text-lg text-slate-900 dark:text-slate-200">
+            <span className="ml-4 font-semibold text-lg text-slate-900 dark:text-slate-200 flex items-center gap-2">
                 {navItems.find(i => i.id === activeTab)?.label}
+                {isPending && <Loader2 size={16} className="animate-spin text-emerald-500" />}
             </span>
         </header>
 
         {/* Content Scroll Area */}
-        <main className="flex-1 overflow-y-auto overflow-x-hidden p-0 relative">
+        <main className={`flex-1 overflow-y-auto overflow-x-hidden p-0 relative transition-opacity duration-200 ${isPending ? 'opacity-70' : 'opacity-100'}`}>
              <div className="max-w-2xl mx-auto min-h-full pb-24 lg:pb-10">
                 {children}
              </div>
